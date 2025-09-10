@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最大誤差模擬器 (課堂互動版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans HK', sans-serif;
+            /* The 'touch-action: none;' property was removed from here to allow page scrolling on touch devices. */
+        }
+        .ruler {
+            position: relative;
+            height: 60px;
+            background: linear-gradient(to right, #f7dE9E, #f0c97d);
+            border: 2px solid #a07d3b;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .tick {
+            position: absolute;
+            bottom: 0;
+            width: 2px;
+            background-color: #333;
+        }
+        .major-tick {
+            height: 30px;
+        }
+        .minor-tick {
+            height: 15px;
+        }
+        .tick-label {
+            position: absolute;
+            bottom: 35px;
+            transform: translateX(-50%);
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .pencil {
+            position: absolute;
+            top: 15px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            cursor: ew-resize; /* East-West resize cursor indicates horizontal dragging */
+            user-select: none; /* Prevent text selection while dragging */
+            /* This property is added here. It prevents scrolling only when a user starts dragging the pencil, not the whole page. */
+            touch-action: none;
+        }
+        .pencil-body {
+            height: 100%;
+            background-color: #fecaca; /* red-200 */
+            border: 2px solid #b91c1c;  /* red-700 */
+            border-radius: 0 5px 5px 0;
+            flex-grow: 1;
+        }
+        .pencil-tip {
+            width: 0;
+            height: 0;
+            border-top: 15px solid transparent;
+            border-bottom: 15px solid transparent;
+            border-right: 20px solid #292524; /* stone-800 */
+        }
+        .error-range {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background-color: rgba(34, 197, 94, 0.3); /* green-500 with opacity */
+            border-left: 2px dashed rgba(22, 163, 74, 0.7);
+            border-right: 2px dashed rgba(22, 163, 74, 0.7);
+            z-index: 5;
+            /* Hidden by default */
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.4s ease-in-out, visibility 0.4s;
+        }
+        .error-range.visible {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <div class="bg-white rounded-lg shadow-xl p-6 md:p-8">
+            <header class="text-center mb-6">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">最大誤差模擬器</h1>
+                <p class="text-gray-600 mt-2">一齊學習點樣搵出量度嘅最大誤差啦！</p>
+            </header>
+
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-blue-800">
+                <p><strong class="font-semibold">玩法：</strong>用滑鼠或者手指<strong class="font-semibold">拖曳支鉛筆</strong>改變長度，然後觀察讀數點樣四捨五入。準備好就禁掣揭曉答案！</p>
+            </div>
+            
+            <!-- Simulation Area -->
+            <div class="mb-8 relative h-40 flex items-center select-none">
+                <div id="simulation-container" class="relative w-full h-full">
+                    <div id="pencil" class="pencil z-10" style="width: 200px;">
+                        <div class="pencil-tip"></div>
+                        <div class="pencil-body"></div>
+                    </div>
+                    <div id="ruler" class="ruler w-full"></div>
+                    <div id="error-range" class="error-range"></div>
+                </div>
+            </div>
+
+            <!-- Control and Results Area -->
+            <div class="text-center mb-8">
+                <button id="reveal-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                    顯示可能範圍
+                </button>
+            </div>
+            
+            <div id="results" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-gray-50 rounded-lg p-5 border">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-3">1. 量度結果</h3>
+                    <p class="text-lg">我哋度到支筆嘅長度大約係：</p>
+                    <p class="text-4xl font-bold text-blue-600 my-2"><span id="measured-length"></span> cm</p>
+                    <p class="text-sm text-gray-500">（準確至最接近嘅 cm）</p>
+                </div>
+
+                <div class="bg-gray-50 rounded-lg p-5 border">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-3">2. 計算最大誤差</h3>
+                    <p class="text-lg">把尺嘅準確度（最小刻度）係 <strong class="font-semibold">1 cm</strong>。</p>
+                    <p class="text-lg mt-2">最大誤差 = 準確度 ÷ 2</p>
+                    <p class="text-4xl font-bold text-green-600 my-2">
+                        1 cm ÷ 2 = <span id="max-error"></span> cm
+                    </p>
+                </div>
+                
+                <div class="md:col-span-2 bg-yellow-50 border border-yellow-200 rounded-lg p-5">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-3">3. 搵出實際長度嘅可能範圍</h3>
+                    <p class="text-lg">因為有最大誤差，支筆嘅<strong class="font-semibold">真正長度</strong>其實係介乎一個範圍之內。</p>
+                    <div class="flex flex-col md:flex-row justify-around items-center mt-4 gap-4">
+                        <div class="text-center">
+                            <p class="text-md text-gray-600">下限 (Lower Limit)</p>
+                            <p class="text-lg">度量值 - 最大誤差</p>
+                            <p class="text-2xl font-bold text-red-600"><span id="lower-limit-calc"></span></p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-md text-gray-600">上限 (Upper Limit)</p>
+                            <p class="text-lg">度量值 + 最大誤差</p>
+                            <p class="text-2xl font-bold text-red-600"><span id="upper-limit-calc"></span></p>
+                        </div>
+                    </div>
+                    <div class="mt-6 bg-white p-4 rounded-md shadow-inner text-center">
+                         <p class="text-lg">所以，實際長度 (L) 嘅範圍係：</p>
+                         <p class="text-2xl md:text-3xl font-bold text-gray-800 tracking-wider mt-2">
+                             <span id="range-inequality"></span>
+                         </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const rulerEl = document.getElementById('ruler');
+        const pencilEl = document.getElementById('pencil');
+        const revealBtn = document.getElementById('reveal-btn');
+        const errorRangeEl = document.getElementById('error-range');
+        
+        const measuredLengthEl = document.getElementById('measured-length');
+        const maxErrorEl = document.getElementById('max-error');
+        const lowerLimitCalcEl = document.getElementById('lower-limit-calc');
+        const upperLimitCalcEl = document.getElementById('upper-limit-calc');
+        const rangeInequalityEl = document.getElementById('range-inequality');
+
+        const RULER_LENGTH_CM = 20;
+        const SCALE_INTERVAL = 1;
+        const MAX_ERROR = SCALE_INTERVAL / 2;
+
+        let trueLengthCm = 10.7; // Initial length
+        let measuredLength;
+        let isDragging = false;
+
+        function updateMeasurementAndDisplay() {
+            // 1. Calculate measured length (rounding)
+            measuredLength = Math.round(trueLengthCm / SCALE_INTERVAL) * SCALE_INTERVAL;
+
+            const rulerWidthPx = rulerEl.clientWidth;
+            const cmToPx = rulerWidthPx / RULER_LENGTH_CM;
+
+            // 2. Update pencil visual length
+            pencilEl.style.width = `${trueLengthCm * cmToPx}px`;
+
+            // 3. Update text displays
+            measuredLengthEl.textContent = measuredLength;
+            maxErrorEl.textContent = MAX_ERROR;
+            const lowerLimit = measuredLength - MAX_ERROR;
+            const upperLimit = measuredLength + MAX_ERROR;
+            lowerLimitCalcEl.textContent = `${measuredLength} - ${MAX_ERROR} = ${lowerLimit}`;
+            upperLimitCalcEl.textContent = `${measuredLength} + ${MAX_ERROR} = ${upperLimit}`;
+            rangeInequalityEl.innerHTML = `${lowerLimit} cm ≤ L &lt; ${upperLimit} cm`;
+
+            // 4. Update error range position and width
+            errorRangeEl.style.left = `${lowerLimit * cmToPx}px`;
+            errorRangeEl.style.width = `${(upperLimit - lowerLimit) * cmToPx}px`;
+        }
+
+        function drawRuler() {
+            const rulerWidthPx = rulerEl.clientWidth;
+            if (rulerWidthPx === 0) return;
+            const cmToPx = rulerWidthPx / RULER_LENGTH_CM;
+            rulerEl.innerHTML = ''; 
+
+            for (let cm = 0; cm <= RULER_LENGTH_CM; cm++) {
+                const isMajorTick = (cm % 5 === 0);
+                const tick = document.createElement('div');
+                tick.className = `tick ${isMajorTick ? 'major-tick' : 'minor-tick'}`;
+                tick.style.left = `${cm * cmToPx}px`;
+                rulerEl.appendChild(tick);
+
+                if (isMajorTick || cm === 0) {
+                    const label = document.createElement('span');
+                    label.className = 'tick-label';
+                    label.textContent = cm;
+                    label.style.left = `${cm * cmToPx}px`;
+                    rulerEl.appendChild(label);
+                }
+            }
+        }
+        
+        // --- Dragging Logic ---
+        function startDrag(e) {
+            e.preventDefault();
+            isDragging = true;
+            document.body.style.cursor = 'ew-resize';
+            // Attach move/end listeners to the whole document to allow dragging outside the pencil
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('touchmove', onDrag, { passive: false });
+            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('touchend', endDrag);
+        }
+
+        function onDrag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+            const rulerRect = rulerEl.getBoundingClientRect();
+            const rulerWidthPx = rulerRect.width;
+            const cmToPx = rulerWidthPx / RULER_LENGTH_CM;
+
+            let newWidthPx = clientX - rulerRect.left;
+            
+            // Clamp values to stay within the ruler
+            if (newWidthPx < 0) newWidthPx = 0;
+            if (newWidthPx > rulerWidthPx) newWidthPx = rulerWidthPx;
+
+            trueLengthCm = newWidthPx / cmToPx;
+            
+            // Hide error range while dragging for a cleaner experience
+            if (errorRangeEl.classList.contains('visible')) {
+                revealBtn.click();
+            }
+
+            updateMeasurementAndDisplay();
+        }
+
+        function endDrag() {
+            isDragging = false;
+            document.body.style.cursor = 'default';
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('touchmove', onDrag);
+            document.removeEventListener('mouseup', endDrag);
+            document.removeEventListener('touchend', endDrag);
+        }
+
+        // --- Event Listeners ---
+        pencilEl.addEventListener('mousedown', startDrag);
+        pencilEl.addEventListener('touchstart', startDrag, { passive: false });
+
+        revealBtn.addEventListener('click', () => {
+            errorRangeEl.classList.toggle('visible');
+            if (errorRangeEl.classList.contains('visible')) {
+                revealBtn.textContent = '隱藏可能範圍';
+                revealBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                revealBtn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
+            } else {
+                revealBtn.textContent = '顯示可能範圍';
+                revealBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
+                revealBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+            }
+        });
+
+        // --- Initial Setup ---
+        function initialize() {
+            drawRuler();
+            updateMeasurementAndDisplay();
+        }
+
+        window.addEventListener('load', initialize);
+        window.addEventListener('resize', initialize);
+
+    </script>
+</body>
+</html>
